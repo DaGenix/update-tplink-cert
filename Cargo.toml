@@ -1,0 +1,9 @@
+[package]
+name = "update-tplink-cert"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.66"
+reqwest = { version = "0.11.12", features = ["blocking", "json", "multipart"] }
+serde = { version = "1.0.147", features = ["serde_derive"] }
