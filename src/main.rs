@@ -1,11 +1,12 @@
 use anyhow::{bail, Result};
+use clap::Parser;
 use reqwest::blocking::multipart::{Form, Part};
 use reqwest::blocking::Client;
 use reqwest::blocking::ClientBuilder;
 use serde::{Deserialize, Serialize};
-use std::env::args;
 use std::fs::File;
 use std::io::Read;
+use std::path::PathBuf;
 
 #[derive(Serialize)]
 struct LoginRequest<'a> {
@@ -65,36 +66,39 @@ fn upload_cert(
     }
 }
 
+#[derive(clap::Parser)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    host: String,
+    username: String,
+    password: String,
+    cert_file: PathBuf,
+    key_file: PathBuf,
+    #[arg(long, default_value_t = false)]
+    insecure: bool,
+}
+
 fn main() -> Result<()> {
-    let mut args = args().skip(1);
-    let Some(host) = args.next() else { bail!("host is required") };
-    let Some(username) = args.next() else { bail!("username is required") };
-    let Some(password) = args.next() else { bail!("password is required") };
-    let Some(cert_file) = args.next() else { bail!("cert_file is required") };
-    let Some(key_file) = args.next() else { bail!("key_file is required") };
+    let args = Args::parse();
 
     let mut client = ClientBuilder::new()
-        // This seems to be required since the router doesn't seem to
-        // want to accept a full cert chain. So, that means that non-browser
-        // clients will get upset about the incomplete chain. I'm not sure if
-        // there is some way around that.
-        .danger_accept_invalid_certs(true)
+        .danger_accept_invalid_certs(if args.insecure { true } else { false })
         .build()?;
-    let tid = login(&mut client, &host, &username, &password)?;
+    let tid = login(&mut client, &args.host, &args.username, &args.password)?;
 
     let mut cert_data = Vec::new();
-    File::open(&cert_file)?.read_to_end(&mut cert_data)?;
+    File::open(&args.cert_file)?.read_to_end(&mut cert_data)?;
     upload_cert(
         &mut client,
-        &host,
+        &args.host,
         &tid,
         "httpsLoadCertificate.json",
         cert_data,
     )?;
 
     let mut key_data = Vec::new();
-    File::open(&key_file)?.read_to_end(&mut key_data)?;
-    upload_cert(&mut client, &host, &tid, "httpsLoadKey.json", key_data)?;
+    File::open(&args.key_file)?.read_to_end(&mut key_data)?;
+    upload_cert(&mut client, &args.host, &tid, "httpsLoadKey.json", key_data)?;
 
     println!("Cert updated");
 
