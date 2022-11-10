@@ -3,6 +3,7 @@ use clap::Parser;
 use reqwest::blocking::multipart::{Form, Part};
 use reqwest::blocking::Client;
 use reqwest::blocking::ClientBuilder;
+use reqwest::tls::Certificate;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
@@ -76,14 +77,28 @@ struct Args {
     key_file: PathBuf,
     #[arg(long, default_value_t = false)]
     insecure: bool,
+    #[arg(long = "extra-root-cert")]
+    extra_root_certs: Vec<PathBuf>,
+}
+
+fn build_client(args: &Args) -> Result<Client> {
+    let mut client_builder = ClientBuilder::new();
+    client_builder =
+        client_builder.danger_accept_invalid_certs(if args.insecure { true } else { false });
+    for cert_file in &args.extra_root_certs {
+        let mut data = Vec::new();
+        File::open(cert_file)?.read_to_end(&mut data)?;
+        let cert = Certificate::from_pem(&*data)?;
+        client_builder = client_builder.add_root_certificate(cert);
+    }
+    Ok(client_builder.build()?)
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let mut client = ClientBuilder::new()
-        .danger_accept_invalid_certs(if args.insecure { true } else { false })
-        .build()?;
+    let mut client = build_client(&args)?;
+
     let tid = login(&mut client, &args.host, &args.username, &args.password)?;
 
     let mut cert_data = Vec::new();
